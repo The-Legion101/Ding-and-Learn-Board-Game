@@ -62,7 +62,7 @@ select{width:100%;padding:10px;background:#0b1020;color:#fff;border:1px solid #f
 const socket=io(), $=id=>document.getElementById(id), faces=["⚀","⚁","⚂","⚃","⚄","⚅"];
 let roomCode="", me="", state=null, cards=[], timerId=null, currentWinner=null;
 
-cards=QUESTIONS;
+cards=${JSON.stringify(QUESTIONS)};
 function msg(t,cls=""){ $("status").textContent=t; $("status").className="status "+cls; }
 function isHost(){return state&&state.hostId===me}
 function cardData(){return state?.round?cards.find(c=>c.id===state.round.cardId):null}
