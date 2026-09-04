@@ -62,7 +62,7 @@ select{width:100%;padding:10px;background:#0b1020;color:#fff;border:1px solid #f
 const socket=io(), $=id=>document.getElementById(id), faces=["⚀","⚁","⚂","⚃","⚄","⚅"];
 let roomCode="", me="", state=null, cards=[], timerId=null, currentWinner=null;
 
-cards=QUESTION_DATA;
+cards=QUESTIONS;
 function msg(t,cls=""){ $("status").textContent=t; $("status").className="status "+cls; }
 function isHost(){return state&&state.hostId===me}
 function cardData(){return state?.round?cards.find(c=>c.id===state.round.cardId):null}
@@ -96,7 +96,7 @@ function render(){
 function renderTimer(){
  clearInterval(timerId);
  if(!state?.round?.dingId){$("timer").textContent="—";return}
- const end=state.round.startedAt + 5000;
+ const end=(state.round.dinggedAt||Date.now()) + 5000;
  const tick=()=>{const left=Math.max(0,end-Date.now());$("timer").textContent=(left/1000).toFixed(1);$("timer").classList.toggle("warn",left<=2000);if(left<=0)clearInterval(timerId)};
  tick();timerId=setInterval(tick,50);
 }
@@ -104,7 +104,7 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",
 
 $("joinForm").onsubmit=e=>{e.preventDefault();const name=$("name").value.trim();const code=$("code").value.trim().toUpperCase();
  if(!name)return; me=""; const event=code?"joinRoom":"createRoom";
- socket.emit(event,{name,code},res=>{if(!res.ok)return alert(res.error);roomCode=res.code;});
+ socket.emit(event,{name,code},res=>{if(!res.ok)return alert(res.error);roomCode=res.code;me=res.playerId||me;});
 };
 socket.on("state",s=>{state=s; if(!me){const mine=s.players.find(p=>p.name===$("name").value.trim());if(mine)me=mine.id}
  $("start").classList.add("hidden");$("game").classList.remove("hidden");render();});
@@ -143,7 +143,7 @@ function publicRoom(room) {
     players:[...room.players.values()].map(p=>({id:p.id,name:p.name,score:p.score,dinged:p.dinged})),
     round:room.round ? {
       cardId:room.round.cardId, level:room.round.level, roll:room.round.roll,
-      startedAt:room.round.startedAt, dingId:room.round.dingId
+      startedAt:room.round.startedAt, dinggedAt:room.round.dinggedAt||null, dingId:room.round.dingId
     } : null
   };
 }
@@ -151,7 +151,7 @@ function broadcast(room){io.to(room.code).emit("state",publicRoom(room));}
 function makeRound(){
   const card=QUESTIONS[Math.floor(Math.random()*QUESTIONS.length)];
   const roll=1+Math.floor(Math.random()*6);
-  return {cardId:card.id,level:roll<=2?0:roll<=4?1:2,roll,startedAt:Date.now(),dingId:null};
+  return {cardId:card.id,level:roll<=2?0:roll<=4?1:2,roll,startedAt:Date.now(),dinggedAt:null,dingId:null};
 }
 
 io.on("connection",socket=>{
@@ -159,14 +159,14 @@ io.on("connection",socket=>{
     const code=roomCode();
     const room={code,hostId:socket.id,readerId:socket.id,players:new Map(),round:null};
     room.players.set(socket.id,{id:socket.id,name:cleanName(name),score:0,dinged:false});
-    rooms.set(code,room); socket.join(code); cb({ok:true,code}); broadcast(room);
+    rooms.set(code,room); socket.join(code); cb({ok:true,code,playerId:socket.id}); broadcast(room);
   });
   socket.on("joinRoom",({code,name},cb)=>{
     const room=rooms.get(String(code||"").toUpperCase().trim());
     if(!room)return cb({ok:false,error:"Room not found."});
     if(room.players.size>=8)return cb({ok:false,error:"Room is full (8 players)."});
     room.players.set(socket.id,{id:socket.id,name:cleanName(name),score:0,dinged:false});
-    socket.join(room.code); cb({ok:true,code:room.code}); broadcast(room);
+    socket.join(room.code); cb({ok:true,code:room.code,playerId:socket.id}); broadcast(room);
   });
   socket.on("setReader",({code,playerId})=>{
     const room=rooms.get(code); if(!room||room.hostId!==socket.id||!room.players.has(playerId))return;
